@@ -3,7 +3,7 @@ Group Project
 Joe's Commit
 Ore's Commit
 Santa's Commit
-Michael Commit
+Michael's Commit
 STEP4:
 Adding my name here, 
 my name is Santa Singh, 
