@@ -58,7 +58,6 @@ class GradeResult(TypedDict):
     code_quality: float
     code_quality_latency: int
 
-
 # ---- Ingest: URL parsing & classification (stub) ----
 def classify_url(raw: str) -> tuple[UrlCategory, Provider, Dict[str, str]]:
     """Return (category, provider, ids) for a URL string. Improved dataset detection."""
