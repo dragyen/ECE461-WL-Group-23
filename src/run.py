@@ -15,7 +15,7 @@ class UrlCategory(str, Enum):
     MODEL = "MODEL"
     DATASET = "DATASET"
     CODE = "CODE"
-
+    OTHER = "OTHER"
 
 # Optional: if you want to branch logic later
 
