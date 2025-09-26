@@ -2,10 +2,13 @@ import asyncio
 import concurrent.futures
 from transformers import AutoModelForCausalLM, AutoTokenizer
 import torch #using pytorch framwework for model manipulation. chose pytorch vs tensorflow because of its variability and similarity to python syntax and simplicity (easier ramp up)
-import time  
+import time
 import requests
 import openai
 from urllib.parse import urlparse
+from run import UrlCategory, Provider
+import logging
+from typing import Dict, Tuple
 
 ERROR_VALUE = -1.0
 
@@ -97,7 +100,7 @@ def bus_factor(model_link: str, eval_prompts=None, eval_answers=None) -> tuple:
 def size():
     return 1
 
-def ramp_up_time(hf_url: str, api_key: str) -> float:
+def ramp_up_time(hf_url: str, api_key: str) -> tuple:
     """
     Fetch a Hugging Face model card from a full link and grade its informational value.
     
@@ -108,7 +111,7 @@ def ramp_up_time(hf_url: str, api_key: str) -> float:
     Returns:
         float: Score between 0.0 (useless) and 1.0 (extremely helpful), or ERROR_VALUE on failure.
     """
-    
+    # Start timing
     start_time = time.time()
 
     # Step 0: Extract model_id from full URL
@@ -161,7 +164,7 @@ Model card content:
         score_text = response["choices"][0]["message"]["content"].strip() #response is the dict provided by openai, of choices choose the first one, grab the message -> content that is returned and strip extra whitespace
         score = float(score_text) #convert score to float
         score = max(0.0, min(1.0, score))  # clamp to [0.0, 1.0] in the case where the LLM returns a value outside this range
-        return score, (time.time() - start_time) * 1000
+        return score, ((time.time() - start_time) * 1000)  # return latency in ms
     except Exception as e:
         print(f"Error grading model card: {e}")
         return ERROR_VALUE, 0.0
@@ -191,45 +194,177 @@ async def code_quality():
 async def dataset_quality():
     await asyncio.sleep(0.6)
     return 1
+def dataset_code_score(hf_link: str, api_key: str) -> float:
+    """
+    Grade how well a Hugging Face model's code and dataset are documented.
+    
+    Args:
+        hf_link (str): Full Hugging Face link (e.g., "https://huggingface.co/bert-base-uncased").
+        api_key (str): API key for the LLM used to evaluate documentation.
+        
+    Returns:
+        float: Score between 0.0 and 1.0, or ERROR_VALUE if something fails.
+    """
 
-async def dataset_code_score():
-    await asyncio.sleep(0.7)
-    return 1
+    # --- Step 1: Parse model_id ---
+    try:
+        if not hf_link.startswith("https://huggingface.co/"): #if model not huggingface link throw error
+            return ERROR_VALUE
+        model_id = hf_link.replace("https://huggingface.co/", "").strip("/") #removing the huggingface part of the link to get the model id
+    except Exception as e:
+        print(f"Error parsing Hugging Face link: {e}") #exception if huggingface is wrong
+        return ERROR_VALUE
+
+    # --- Step 2: Fetch model card & datasets ---
+    try:
+        url = f"https://huggingface.co/api/models/{model_id}" #fetching model card, check previous documentation for explaination
+        resp = requests.get(url)
+        resp.raise_for_status()
+        data = resp.json()
+        
+        model_card = data.get("cardData", {}).get("content", "")
+        datasets = data.get("datasets", [])
+    except Exception as e:
+        print(f"Error fetching model info: {e}")
+        return ERROR_VALUE
+
+    # Handle missing dataset
+    dataset_text = "\n".join(datasets) if datasets else "NO DATASET PROVIDED" #if no datasets provided, return no dataset provided
+
+    # --- Step 3: Fetch repository files ---
+    try:
+        files_url = f"https://huggingface.co/api/models/{model_id}/tree/main" #fetching model files from huggingface api
+        files_resp = requests.get(files_url) #requesting files based on the url
+        files_resp.raise_for_status() #checking if the url is valid
+        all_files = [f["path"] for f in files_resp.json()] #parsing the json to get the file paths
+    except Exception: #if exception thrown, just return empty list, implies that there is no code linked
+        all_files = []
+
+    # Accept any text-like files (not just .py)
+    text_like_ext = (".py", ".md", ".txt", ".json", ".yaml", ".yml") #accepting any text like files
+    code_files = [f for f in all_files if f.endswith(text_like_ext)] #filtering files to only include text like files
+
+    code_texts = []
+    if code_files:
+        for f in code_files[:3]:  # limit to 3 files
+            try:
+                raw_url = f"https://huggingface.co/{model_id}/resolve/main/{f}" #creating url to later fetch raw file contents from huggingface
+                file_resp = requests.get(raw_url) #fetching raw file
+                if file_resp.status_code == 200:
+                    # take at most ~2000 chars to keep LLM input efficient
+                    code_texts.append(file_resp.text[:2000])
+            except Exception:
+                continue
+    else:
+        code_texts.append("NO CODE FILES PROVIDED")
+
+    # --- Step 4: Build combined evaluation text ---
+    combined_text = f"""
+=== MODEL CARD === in case of no model card, tell no model card provided. Ideally there will be a model card if it is a valid link but private models, new/experiemntal models and minimal repos that are just weights will not hav a card
+{model_card if model_card else "NO MODEL CARD PROVIDED"} 
+
+=== DATASETS ===
+{dataset_text} 
+
+=== CODE SNIPPETS ===
+{"\n\n".join(code_texts)}
+"""
+
+    if not combined_text.strip(): #if no text at all, return error
+        return ERROR_VALUE
+
+    # --- Step 5: Prompt LLM for grading ---
+    prompt = f"""
+You are an expert evaluator of ML repositories.
+
+Grade the following Hugging Face repository on documentation quality.
+Criteria:
+1. Code documentation (inline comments, docstrings, clarity of usage).
+2. Dataset documentation (description, licensing, intended use).
+3. Model card completeness (instructions, examples, limitations).
+
+If dataset or code files are missing, assume they score 0.0 and only evaluate what's available.
+
+Return ONLY a floating-point number between 0.0 (very poorly documented) and 1.0 (excellent documentation).
+
+Repository content:
+\"\"\" 
+{combined_text}
+\"\"\"
+"""
+
+    try: #call LLM to grade documentation based off prompt, check prior documentation for explaination
+        openai.api_key = api_key
+        response = openai.ChatCompletion.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.0
+        )
+        score_text = response["choices"][0]["message"]["content"].strip()
+        score = float(score_text)
+        return max(0.0, min(1.0, score))  # clamp to [0,1]
+    except Exception as e:
+        print(f"Error grading documentation: {e}")
+        return ERROR_VALUE
+
 
 # run tasks
-def run_cpu_metrics():
-    """Run CPU metrics in a process/thread pool."""
-    with concurrent.futures.ProcessPoolExecutor() as executor:
-        futures = {
-            "bus_factor": executor.submit(bus_factor),
-            "size": executor.submit(size),
-            "ramp_up_time": executor.submit(ramp_up_time),
-            "correctness": executor.submit(correctness),
-            "license": executor.submit(license),
-            "netscore": executor.submit(netscore)
-        }
-        return {name: f.result() for name, f in futures.items()}
+async def run_metrics(category: UrlCategory, provider: Provider, ids: Dict[str, str], metric_scores: Dict) -> Dict[str, float]:
+    """Run all relevant metrics based on URL classification."""
+    tasks = []
+    task_names = []
 
-async def run_api_metrics():
-    """Run async metrics concurrently."""
-    tasks = {
-        "performance_claims": asyncio.create_task(performance_claims()),
-        "responsive_maintainer": asyncio.create_task(responsive_maintainer()),
-        "code_quality": asyncio.create_task(code_quality()),
-        "dataset_qualtiy": asyncio.create_task(dataset_quality()),
-        "dataset_code_score": asyncio.create_task(dataset_code_score())
-    }
-    return {name: await task for name, task in tasks.items()}
+    # Common metrics for all types
+    tasks.extend([
+        responsive_maintainer(),
+        code_quality()
+    ])
+    task_names.extend(['responsive_maintainer', 'code_quality'])
 
-async def run_all_metrics():
-    # Run CPU (executor) + API (async) concurrently
-    loop = asyncio.get_running_loop()
-    cpu_future = loop.run_in_executor(None, run_cpu_metrics)
-    api_future = asyncio.create_task(run_api_metrics())
+    # Add category-specific metrics
+    if category == UrlCategory.MODEL:
+        tasks.extend([
+            performance_claims(),
+            bus_factor(ids['url']),
+            size(),
+            ramp_up_time(),
+            license()
+        ])
+        task_names.extend([
+            'performance_claims',
+            'bus_factor',
+            'size',
+            'ramp_up_time',
+            'license'
+        ])
 
-    cpu_results, api_results = await asyncio.gather(cpu_future, api_future)
-    return {**cpu_results, **api_results}
+    elif category == UrlCategory.DATASET:
+        tasks.extend([
+            dataset_quality(),
+            dataset_code_score()
+        ])
+        task_names.extend(['dataset_quality', 'dataset_code_score'])
 
-if __name__ == "__main__":
-    results = asyncio.run(run_all_metrics())
-    print("All metric results:", results)
+    elif category == UrlCategory.CODE:
+        tasks.extend([
+            code_quality(),
+            license()
+        ])
+        task_names.extend(['code_quality', 'license'])
+
+    # Wait for all tasks to complete
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+
+    # Store results in metric_scores dictionary
+    for name, result in zip(task_names, results):
+        if isinstance(result, Exception):
+            logging.error(f"Error in metric {name}: {result}")
+            metric_scores[name] = ERROR_VALUE
+            metric_scores[f"{name}_latency"] = 0.0
+        else:
+            # All metrics now return (score, latency)
+            score, latency = result
+            metric_scores[name] = score
+            metric_scores[f"{name}_latency"] = latency
+
+    return metric_scores
