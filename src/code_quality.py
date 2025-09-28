@@ -51,4 +51,4 @@ async def compute(model_url: str, code_url: str | None, dataset_url: str | None)
         shutil.rmtree(tmpdir, ignore_errors=True)
 
     latency_ms = (int)((time.perf_counter() - start) * 1000)
-    return score, latenc
+    return score, latency_ms

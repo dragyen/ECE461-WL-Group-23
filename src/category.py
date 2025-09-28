@@ -8,4 +8,5 @@ async def compute(model_url: str, code_url: str, dataset_url: str) -> Tuple[str,
     Returns the category of model.
     """
     startTime = time.time()
-    latency_ms = (int)((time.time() - startTim
+    latency_ms = (int)((time.time() - startTime) * 1000)
+    return "MODEL", latency_ms

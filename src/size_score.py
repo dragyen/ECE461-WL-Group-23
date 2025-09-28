@@ -60,4 +60,4 @@ async def compute(payload: dict) -> tuple:
 
     except Exception as e:
         print(f"Error: {e}")
-        return ERROR_VALUE, (int)((time.time() - start
+        return ERROR_VALUE, (int)((time.time() - start_time) * 1000)

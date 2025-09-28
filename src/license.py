@@ -57,4 +57,5 @@ async def compute(model_url: str, code_url: str | None, dataset_url: str | None)
         return score, (int)((time.time() - start_time) * 1000)
     except Exception as e:
         print(f"Error computing license score: {e}")
-        return ERROR_VALUE, (int)((time.time() - start_time) 
+        return ERROR_VALUE, (int)((time.time() - start_time) * 1000)
+    

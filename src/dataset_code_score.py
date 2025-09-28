@@ -116,4 +116,4 @@ Repository content:
         return max(0.0, min(1.0, score)), (int)((time.time() - start_time)) * 1000  # clamp to [0,1]
     except Exception as e:
         print(f"Error grading documentation: {e}")
-        return ERROR_VALUE, (int)((time.time() - start_t
+        return ERROR_VALUE, (int)((time.time() - start_time) * 1000)
