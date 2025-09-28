@@ -6,7 +6,7 @@ from typing import Tuple
 
 ERROR_VALUE = -1.0
 
-async def compute(model_url: str, code_url: str | None, dataset_url: str | None) -> Tuple[float, float]:
+async def compute(model_url: str, code_url: str | None, dataset_url: str | None) -> Tuple[float, int]:
     """
     Fetch a Hugging Face model card from a full link and grade its informational value.
     
@@ -70,7 +70,7 @@ Model card content:
         score_text = response["choices"][0]["message"]["content"].strip() #response is the dict provided by openai, of choices choose the first one, grab the message -> content that is returned and strip extra whitespace
         score = float(score_text) #convert score to float
         score = max(0.0, min(1.0, score))  # clamp to [0.0, 1.0] in the case where the LLM returns a value outside this range
-        return score, (time.time() - start_time) * 1000
+        return score, (int)((time.time() - start_time) * 1000)
     except Exception as e:
         print(f"Error grading model card: {e}")
-        return ERROR_VALUE, (time.time() - start_time) * 1000
+        return ERROR_VALUE, (int)((time.time() - start_time) * 1000)

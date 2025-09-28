@@ -7,7 +7,7 @@ from api_keys import open_ai_key
 
 ERROR_VALUE = -1.0
 
-async def compute(model_url: str, code_url: str | None, dataset_url: str | None) -> Tuple[float, float]:
+async def compute(model_url: str, code_url: str | None, dataset_url: str | None) -> Tuple[float, int]:
     """
     Grade how well a Hugging Face model's code and dataset are documented.
     
@@ -113,7 +113,7 @@ Repository content:
         )
         score_text = response["choices"][0]["message"]["content"].strip()
         score = float(score_text)
-        return max(0.0, min(1.0, score)), (time.time() - start_time) * 1000  # clamp to [0,1]
+        return max(0.0, min(1.0, score)), (int)((time.time() - start_time)) * 1000  # clamp to [0,1]
     except Exception as e:
         print(f"Error grading documentation: {e}")
-        return ERROR_VALUE, (time.time() - start_time) * 1000
+        return ERROR_VALUE, (int)((time.time() - start_t

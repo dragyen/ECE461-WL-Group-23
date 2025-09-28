@@ -8,7 +8,7 @@ import logging
 import git  # from GitPython
 
 
-async def compute(model_url: str, code_url: str | None, dataset_url: str | None) -> Tuple[float, float]:
+async def compute(model_url: str, code_url: str | None, dataset_url: str | None) -> Tuple[float, int]:
     """
     Compute code quality metric based on GitHub repo metadata.
     Returns: (score [0-1], latency_ms)
@@ -50,5 +50,5 @@ async def compute(model_url: str, code_url: str | None, dataset_url: str | None)
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)
 
-    latency_ms = (time.perf_counter() - start) * 1000
-    return score, latency_ms
+    latency_ms = (int)((time.perf_counter() - start) * 1000)
+    return score, latenc

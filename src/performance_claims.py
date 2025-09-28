@@ -15,7 +15,7 @@ BENCHMARK_KEYWORDS = [
     "imagenet", "cifar", "glue", "squad", "msmarco", "wikitext", "mt-bench"
 ]
 
-async def compute(model_url: str | None, code_url: str | None, dataset_url: str | None) -> tuple[float, float]:
+async def compute(model_url: str | None, code_url: str | None, dataset_url: str | None) -> tuple[float, int]:
     """
     Heuristic metric: detect performance/benchmark claims in a repo.
     Score = fraction of benchmark keywords found, capped at 1.0.
@@ -66,5 +66,5 @@ async def compute(model_url: str | None, code_url: str | None, dataset_url: str 
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)
 
-    latency_ms = (time.perf_counter() - start) * 1000
+    latency_ms = (int)((time.perf_counter() - start) * 1000)
     return round(score, 2), latency_ms
