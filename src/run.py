@@ -13,14 +13,37 @@ def classify_url(raw: str) -> Tuple[UrlCategory, Provider, Dict[str, str]]:
     """Return (category, provider, ids) for a URL string. Improved dataset detection."""
     s = raw.strip()
     if "huggingface.co" in s:
-        if "/datasets/" in s or s.rstrip("/").endswith("/datasets"):
-            # Hugging Face dataset URL
+        if "/datasets/" in s:
+            # Hugging Face dataset URL (e.g. https://huggingface.co/datasets/owner/name)
+            parts = s.split("/")
+            if len(parts) >= 6:
+                return UrlCategory.DATASET, Provider.HUGGINGFACE, {
+                    "url": s,
+                    "owner": parts[4],
+                    "name": parts[5],
+                }
             return UrlCategory.DATASET, Provider.HUGGINGFACE, {"url": s}
         else:
-            # Hugging Face model URL (default)
+            # Hugging Face model URL (default) (e.g. https://huggingface.co/owner/model)
+            parts = s.split("/")
+            if len(parts) >= 5:
+                return UrlCategory.MODEL, Provider.HUGGINGFACE, {
+                    "url": s,
+                    "owner": parts[3],
+                    "name": parts[4],
+                }
             return UrlCategory.MODEL, Provider.HUGGINGFACE, {"url": s}
     if "github.com" in s:
+        # GitHub URL (e.g. https://github.com/owner/repo)
+        parts = s.split("/")
+        if len(parts) >= 5:
+            return UrlCategory.CODE, Provider.GITHUB, {
+                "url": s,
+                "owner": parts[3],
+                "repo": parts[4],
+            }
         return UrlCategory.CODE, Provider.GITHUB, {"url": s}
+    
     return UrlCategory.OTHER, Provider.OTHER, {"url": s}
 
 
@@ -92,6 +115,7 @@ def urls_command(urls_file: str):
     if not p.exists():
         click.echo(f"Error: file not found: {p}", err=True)
         sys.exit(1)
+
     lines = [ln.strip() for ln in p.read_text(encoding="utf-8").splitlines() if ln.strip()]
     source = str(p)
     click.echo(f"Read {len(lines)} lines from {source}. (grading stub)")
